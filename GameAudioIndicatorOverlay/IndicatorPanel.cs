@@ -1,44 +1,40 @@
-﻿using Timer = System.Windows.Forms.Timer;
+﻿using System.Drawing.Drawing2D;
 
 namespace GameAudioIndicatorOverlay;
 
 public class IndicatorPanel : Panel
 {
-    private double _degree;
+    private float _panValue;
+    private Brush _highlightBrush = new SolidBrush(Color.Red);
+    private Pen _linePen = new Pen(Color.FromArgb(255, Color.Black),5);
+    private float _highlightWidth = 20;
 
-    public IndicatorPanel(double degree)
+    public IndicatorPanel()
     {
-        _degree = degree;
         var screen = Screen.PrimaryScreen;
         Size = new Size(screen.Bounds.Width, screen.Bounds.Height);
+        _linePen.EndCap = LineCap.Round;
+        _linePen.StartCap = LineCap.Round;
     }
 
-    public double Degree
+    public void UpdatePanValue(float panValue)
     {
-        get { return _degree; }
-        set
-        {
-            _degree = value;
-            Invalidate();
-        }
+        _panValue = panValue;
+        Invalidate();
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        var screen = Screen.PrimaryScreen;
-        var diameter = Math.Min(screen.Bounds.Width, screen.Bounds.Height);
-        var radius = diameter / 2;
-        var center = new Point(screen.Bounds.Width / 2, screen.Bounds.Height / 2);
 
-        // Draw the circle
-        e.Graphics.DrawEllipse(Pens.RoyalBlue, center.X - radius, center.Y - radius, diameter, diameter);
-
-        // Calculate the starting and ending angles for the highlighted section
-        var startAngle = _degree - 10;
-        var endAngle = _degree + 10;
-
-        // Draw the highlighted section
-        e.Graphics.FillPie(Brushes.Red, center.X - radius, center.Y - radius, diameter, diameter, (float)startAngle, (float)(endAngle - startAngle));
+        var g = e.Graphics;
+        float yPos = Height * 0.55f;
+        var lineStart = new PointF(Width * 0.45f, yPos);
+        var lineEnd = new PointF(Width * 0.55f, yPos);
+        g.DrawLine(_linePen, lineStart, lineEnd);
+        float offset = _panValue * (lineEnd.X - lineStart.X - _highlightWidth) / 2 + (lineStart.X + lineEnd.X - _highlightWidth) / 2;
+        float height = _linePen.Width + _linePen.Width * 0.5f;
+        float yRectangle = yPos - height / 2;
+        g.FillRectangle(_highlightBrush, new RectangleF(offset, yRectangle, _highlightWidth, height));
     }
 }

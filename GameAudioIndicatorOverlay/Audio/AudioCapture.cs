@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 namespace GameAudioIndicatorOverlay.Audio;
@@ -14,34 +15,32 @@ public class AudioCapture
 
     public void Capture()
     {
-        var capture = new WasapiLoopbackCapture();
+        var enumerator = new MMDeviceEnumerator();
+        var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+        var capture = new WasapiLoopbackCapture(device);
+        
+        List<double> _panValues = new List<double>();
+        int _averageCount = 3;
+
         capture.DataAvailable += (s, a) =>
         {
-            //var str = GetDirectionWithPhaseDifference(capture.WaveFormat, a.Buffer);
             double pan = getStereoPan(capture.WaveFormat, a.Buffer);
-            if (pan == Double.NaN)
+            if (Double.IsNaN(pan))
             {
                 return;
             }
-            double StereoPanToDegree(double value)
+            
+            _panValues.Add(pan);
+            if (_panValues.Count > _averageCount)
             {
-                // Convert the stereo panning value to a degree between 0 and 180
-                double degree = (value + 1) * 90;
-
-                // Rotate the degree so the top of the circle represents the front
-                degree = 90 - degree;
-
-                // Make sure the degree is within the range [0, 360)
-                if (degree < 0)
-                    degree += 360;
-                return degree;
+                var averagePan = _panValues.Average();
+                _overlayForm.Invoke((MethodInvoker)delegate
+                {
+                    _overlayForm.UpdateIndicator((float) averagePan);
+                    _overlayForm.UpdateText(Math.Round(averagePan, 5).ToString());
+                });
+                _panValues.Clear();
             }
-
-            var d = StereoPanToDegree(pan);
-            _overlayForm.Invoke((MethodInvoker)delegate
-            {
-                _overlayForm.TriggerOverlayIndicator(d);
-            });
         };
 
         capture.RecordingStopped += (s, a) =>
@@ -52,85 +51,32 @@ public class AudioCapture
         capture.StartRecording();
         while (capture.CaptureState != NAudio.CoreAudioApi.CaptureState.Stopped)
         {
-            Thread.Sleep(10);
+            Thread.Sleep(300);
         }
     }
-    
-    double getStereoPan(WaveFormat waveFormat, byte[] buffer)
+
+    float getStereoPan(WaveFormat waveFormat, byte[] buffer)
     {
-        if (waveFormat.Channels != 2)
-        {
-            throw new ArgumentException("Wave format must be stereo", nameof(waveFormat));
-        }
-        var left = new float[buffer.Length / sizeof(float)];
-        var right = new float[buffer.Length / sizeof(float)];
+        var channels = waveFormat.Channels;
+        var samplesPerChannel = buffer.Length / sizeof(float) / channels;
         var samples = new float[buffer.Length / sizeof(float)];
         Buffer.BlockCopy(buffer, 0, samples, 0, buffer.Length);
 
-        for (int i = 0; i < samples.Length; i += 2)
+        var rmsPerChannel = new float[channels];
+        for (int i = 0; i < samplesPerChannel; i++)
         {
-            left[i / 2] = samples[i];
-            right[i / 2] = samples[i + 1];
+            for (int j = 0; j < channels; j++)
+            {
+                rmsPerChannel[j] += samples[i * channels + j] * samples[i * channels + j];
+            }
         }
-        var leftAmplitude = left.Select(x => Math.Abs(x)).Max();
-        var rightAmplitude = right.Select(x => Math.Abs(x)).Max();
-        var stereoPan = leftAmplitude - rightAmplitude;
-        stereoPan /= leftAmplitude + rightAmplitude;
-        return stereoPan;
-    }
-    
-    // string GetDirectionWithPhaseDifference(WaveFormat waveFormat, byte[] buffer)
-    // {
-    //     var samples = new float[buffer.Length / sizeof(float)];
-    //     Buffer.BlockCopy(buffer, 0, samples, 0, buffer.Length);
-    //     var left = new float[samples.Length / 2];
-    //     var right = new float[samples.Length / 2];
-    //
-    //     for (int i = 0; i < samples.Length; i += 2)
-    //     {
-    //         left[i / 2] = samples[i];
-    //         right[i / 2] = samples[i + 1];
-    //     }
-    //     var leftPhase = GetPhase(left);
-    //     var rightPhase = GetPhase(right);
-    //     var phaseDifference = rightPhase - leftPhase;
-    //     if (phaseDifference > Math.PI)
-    //     {
-    //         phaseDifference = 2 * Math.PI - phaseDifference;
-    //     }
-    //     if (phaseDifference < Math.PI / 2)
-    //     {
-    //         return "Front";
-    //     }
-    //     else if (phaseDifference < Math.PI)
-    //     {
-    //         return "Right";
-    //     }
-    //     else
-    //     {
-    //         return "Left";
-    //     }
-    // }
-    //
-    // double GetPhase(float[] samples)
-    // {
-    //     var complex = new Complex[samples.Length];
-    //     for (int i = 0; i < samples.Length; i++)
-    //     {
-    //         complex[i] = new Complex(samples[i], 0);
-    //     }
-    //     Accord.Math.FourierTransform.FFT(complex, Accord.Math.FourierTransform.Direction.Forward);
-    //     var maxIndex = 0;
-    //     var maxAmplitude = 0.0;
-    //     for (int i = 0; i < complex.Length; i++)
-    //     {
-    //         if (complex[i].Magnitude > maxAmplitude)
-    //         {
-    //             maxAmplitude = complex[i].Magnitude;
-    //             maxIndex = i;
-    //         }
-    //     }
-    //     return Math.Atan2(complex[maxIndex].Imaginary, complex[maxIndex].Real);
-    // }
 
+        for (int i = 0; i < channels; i++)
+        {
+            rmsPerChannel[i] = (float)Math.Sqrt(rmsPerChannel[i] / samplesPerChannel);
+        }
+
+        var stereoPan = (rmsPerChannel[0] - rmsPerChannel[1]) / (rmsPerChannel[0] + rmsPerChannel[1]);
+        return -1 * stereoPan;
+    }
 }
