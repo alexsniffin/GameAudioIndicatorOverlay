@@ -9,7 +9,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Accord.Math" Version="3.8.2-alpha" />
       <PackageReference Include="NAudio" Version="2.1.0" />
     </ItemGroup>
 

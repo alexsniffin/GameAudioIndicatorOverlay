@@ -37,9 +37,10 @@ public class OverlayForm : Form
         _label.Text = text;
     }
 
-    public void UpdateIndicator(float panValue)
+    public void UpdateIndicator(float panValue, float[] channelPercentages)
     {
         _panel.UpdatePanValue(panValue);
+        _panel.UpdateChannelPercentages(channelPercentages);
     }
     
     protected override CreateParams CreateParams
